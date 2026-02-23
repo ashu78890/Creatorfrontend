@@ -215,7 +215,7 @@ export default function PricingPage() {
             Join thousands of creators who trust CreatorFlow to manage their partnerships.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Link href="/onboarding">
+            <Link href="/auth/register">
               <Button className="h-10 text-[13px] shadow-sm shadow-primary/20 hover:shadow-md hover:shadow-primary/25 transition-shadow">
                 Start Free Trial
               </Button>

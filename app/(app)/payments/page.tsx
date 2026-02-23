@@ -1,9 +1,11 @@
 "use client"
 
+import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { StatCard } from "@/components/stat-card"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
   TableBody,
@@ -13,65 +15,16 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { DollarSign, TrendingUp, Clock, CheckCircle2, Download, ArrowUpRight } from "lucide-react"
-
-const payments = [
-  {
-    id: 1,
-    brand: "Nike",
-    deal: "Summer Running Campaign",
-    amount: 2500,
-    received: 1000,
-    status: "partially_paid",
-    dueDate: "2026-02-15",
-  },
-  {
-    id: 2,
-    brand: "Spotify",
-    deal: "Podcast Promotion",
-    amount: 4000,
-    received: 0,
-    status: "pending",
-    dueDate: "2026-02-20",
-  },
-  {
-    id: 3,
-    brand: "Adobe",
-    deal: "Creative Tools Review",
-    amount: 3200,
-    received: 3200,
-    status: "paid",
-    dueDate: "2026-01-30",
-  },
-  {
-    id: 4,
-    brand: "Samsung",
-    deal: "Galaxy Launch Event",
-    amount: 5500,
-    received: 0,
-    status: "pending",
-    dueDate: "2026-03-01",
-  },
-  {
-    id: 5,
-    brand: "Apple",
-    deal: "iPhone Review",
-    amount: 6000,
-    received: 6000,
-    status: "paid",
-    dueDate: "2026-01-20",
-  },
-  {
-    id: 6,
-    brand: "Adidas",
-    deal: "Fitness Collection",
-    amount: 1800,
-    received: 900,
-    status: "partially_paid",
-    dueDate: "2026-02-25",
-  },
-]
+import { usePayments } from "@/hooks/usePayments"
+import { api } from "@/lib/api"
+import { toast } from "sonner"
+import { useAuthStore } from "@/store/authStore"
+import { formatCurrency } from "@/lib/currency"
 
 export default function PaymentsPage() {
+  const [isExporting, setIsExporting] = useState(false)
+  const { data: payments = [], isLoading } = usePayments()
+  const currency = useAuthStore((state) => state.user?.currency || "USD")
   const totalPaid = payments.reduce((acc, p) => acc + p.received, 0)
   const totalPending = payments.reduce((acc, p) => acc + (p.amount - p.received), 0)
   const totalExpected = payments.reduce((acc, p) => acc + p.amount, 0)
@@ -99,6 +52,47 @@ export default function PaymentsPage() {
     }
   }
 
+  const handleExport = async () => {
+    try {
+      setIsExporting(true)
+      const response = await api.get("/api/payments/export", { responseType: "blob" })
+      const blob = new Blob([response.data], { type: "text/csv;charset=utf-8;" })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = "payments-report.csv"
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (error: any) {
+      const message = error?.response?.data?.message || "Failed to export payments"
+      toast.error(message)
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="p-4 lg:p-6 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-2">
+            <Skeleton className="h-6 w-36" />
+            <Skeleton className="h-4 w-56" />
+          </div>
+          <Skeleton className="h-9 w-36" />
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, idx) => (
+            <Skeleton key={idx} className="h-24" />
+          ))}
+        </div>
+        <Skeleton className="h-72" />
+      </div>
+    )
+  }
+
   return (
     <div className="p-4 lg:p-6 space-y-5">
       {/* Header */}
@@ -107,9 +101,14 @@ export default function PaymentsPage() {
           <h1 className="text-xl font-bold text-foreground tracking-tight">Payments</h1>
           <p className="text-[13px] text-muted-foreground">Track your earnings and pending payments</p>
         </div>
-        <Button variant="outline" className="border-border/60 hover:border-border hover:bg-muted/50 h-9 bg-transparent">
+        <Button
+          variant="outline"
+          className="border-border/60 hover:border-border hover:bg-muted/50 h-9 bg-transparent"
+          onClick={handleExport}
+          disabled={isExporting}
+        >
           <Download className="w-4 h-4 mr-2" />
-          Export Report
+          {isExporting ? "Exporting..." : "Export Report"}
         </Button>
       </div>
 
@@ -117,25 +116,25 @@ export default function PaymentsPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Total Earned"
-          value={`$${totalPaid.toLocaleString()}`}
+          value={isLoading ? "..." : formatCurrency(totalPaid, currency)}
           icon={DollarSign}
           variant="success"
         />
         <StatCard
           title="Pending"
-          value={`$${totalPending.toLocaleString()}`}
+          value={isLoading ? "..." : formatCurrency(totalPending, currency)}
           icon={Clock}
           variant="warning"
         />
         <StatCard
           title="Expected Total"
-          value={`$${totalExpected.toLocaleString()}`}
+          value={isLoading ? "..." : formatCurrency(totalExpected, currency)}
           icon={TrendingUp}
           variant="primary"
         />
         <StatCard
           title="Completed"
-          value={payments.filter((p) => p.status === "paid").length}
+          value={isLoading ? "..." : payments.filter((p) => p.status === "paid").length}
           icon={CheckCircle2}
           variant="default"
         />
@@ -160,40 +159,58 @@ export default function PaymentsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {payments.map((payment) => (
-                <TableRow key={payment.id} className="group hover:bg-muted/30 border-b border-border/40 last:border-0">
-                  <TableCell className="py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-md bg-gradient-to-br from-primary/15 to-primary/5 flex items-center justify-center text-primary font-semibold text-[12px] border border-primary/10">
-                        {payment.brand.charAt(0)}
-                      </div>
-                      <span className="text-[13px] font-medium">{payment.brand}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell text-[12px] text-muted-foreground py-3">
-                    {payment.deal}
-                  </TableCell>
-                  <TableCell className="text-[13px] font-semibold py-3">
-                    ${payment.amount.toLocaleString()}
-                  </TableCell>
-                  <TableCell className="hidden sm:table-cell text-[13px] text-muted-foreground py-3">
-                    ${payment.received.toLocaleString()}
-                  </TableCell>
-                  <TableCell className="py-3">{getStatusBadge(payment.status)}</TableCell>
-                  <TableCell className="hidden lg:table-cell text-[12px] text-muted-foreground py-3">
-                    {new Date(payment.dueDate).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                    })}
-                  </TableCell>
-                  <TableCell className="py-3">
-                    <button className="w-7 h-7 rounded-md bg-muted/50 flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors opacity-0 group-hover:opacity-100">
-                      <ArrowUpRight className="w-4 h-4" />
-                    </button>
+              {payments.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="py-10 text-center text-[13px] text-muted-foreground">
+                    No payments yet. Add a payment to start tracking your earnings.
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                payments.map((payment) => (
+                  <TableRow key={payment._id} className="group hover:bg-muted/30 border-b border-border/40 last:border-0">
+                    <TableCell className="py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-md bg-gradient-to-br from-primary/15 to-primary/5 flex items-center justify-center text-primary font-semibold text-[12px] border border-primary/10">
+                          {typeof payment.deal === "string"
+                            ? "D"
+                            : payment.deal?.brandName?.charAt(0) || "D"}
+                        </div>
+                        <span className="text-[13px] font-medium">
+                          {typeof payment.deal === "string"
+                            ? "Deal"
+                            : payment.deal?.brandName || "Deal"}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell text-[12px] text-muted-foreground py-3">
+                      {typeof payment.deal === "string"
+                        ? ""
+                        : payment.deal?.dealName || ""}
+                    </TableCell>
+                    <TableCell className="text-[13px] font-semibold py-3">
+                      {formatCurrency(payment.amount, currency)}
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell text-[13px] text-muted-foreground py-3">
+                      {formatCurrency(payment.received, currency)}
+                    </TableCell>
+                    <TableCell className="py-3">{getStatusBadge(payment.status)}</TableCell>
+                    <TableCell className="hidden lg:table-cell text-[12px] text-muted-foreground py-3">
+                      {payment.dueDate
+                        ? new Date(payment.dueDate).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })
+                        : ""}
+                    </TableCell>
+                    <TableCell className="py-3">
+                      <button className="w-7 h-7 rounded-md bg-muted/50 flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors opacity-0 group-hover:opacity-100">
+                        <ArrowUpRight className="w-4 h-4" />
+                      </button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </CardContent>

@@ -7,7 +7,7 @@ interface StatCardProps {
   value: string | number
   icon: LucideIcon
   trend?: {
-    value: number
+    value: number | string
     positive: boolean
   }
   variant?: "default" | "primary" | "success" | "warning"
@@ -39,7 +39,9 @@ export function StatCard({ title, value, icon: Icon, trend, variant = "default" 
                 )}>
                   {trend.positive ? "↑" : "↓"}
                 </span>
-                {trend.value}% from last month
+                {typeof trend.value === "number"
+                  ? `${trend.value}% from last month`
+                  : `${trend.value} vs last month`}
               </p>
             )}
           </div>

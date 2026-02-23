@@ -4,19 +4,10 @@ import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Skeleton } from "@/components/ui/skeleton"
 import { ChevronLeft, ChevronRight, Instagram, Youtube, Calendar as CalendarIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
-
-const events = [
-  { id: 1, brand: "Nike", type: "Reel", date: "2026-02-06", platform: "instagram", color: "primary" },
-  { id: 2, brand: "Nike", type: "Story", date: "2026-02-06", platform: "instagram", color: "primary" },
-  { id: 3, brand: "Spotify", type: "Video", date: "2026-02-08", platform: "youtube", color: "chart-2" },
-  { id: 4, brand: "Adidas", type: "Story", date: "2026-02-10", platform: "instagram", color: "chart-3" },
-  { id: 5, brand: "Adidas", type: "Post", date: "2026-02-10", platform: "instagram", color: "chart-3" },
-  { id: 6, brand: "Adobe", type: "Reel", date: "2026-02-12", platform: "instagram", color: "chart-4" },
-  { id: 7, brand: "Samsung", type: "Video", date: "2026-02-15", platform: "youtube", color: "chart-5" },
-  { id: 8, brand: "Apple", type: "Reel", date: "2026-02-18", platform: "instagram", color: "primary" },
-]
+import { useCalendar } from "@/hooks/useCalendar"
 
 const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 const months = [
@@ -30,6 +21,12 @@ export default function CalendarPage() {
 
   const year = currentDate.getFullYear()
   const month = currentDate.getMonth()
+
+  const { data: rawEvents = [], isLoading } = useCalendar({ month: month + 1, year })
+  const events = rawEvents.map((event, index) => ({
+    ...event,
+    color: ["primary", "chart-2", "chart-3", "chart-4", "chart-5"][index % 5]
+  }))
 
   const firstDayOfMonth = new Date(year, month, 1)
   const lastDayOfMonth = new Date(year, month + 1, 0)
@@ -45,7 +42,7 @@ export default function CalendarPage() {
   }
 
   const getEventsForDate = (date: string) => {
-    return events.filter((e) => e.date === date)
+    return events.filter((e) => e.date?.startsWith(date))
   }
 
   const formatDate = (day: number) => {
@@ -79,6 +76,22 @@ export default function CalendarPage() {
   }
   for (let day = 1; day <= daysInMonth; day++) {
     calendarDays.push(day)
+  }
+
+  if (isLoading) {
+    return (
+      <div className="p-4 lg:p-6 space-y-5">
+        <div className="space-y-2">
+          <Skeleton className="h-6 w-36" />
+          <Skeleton className="h-4 w-56" />
+        </div>
+        <div className="grid lg:grid-cols-3 gap-5">
+          <Skeleton className="lg:col-span-2 h-[520px]" />
+          <Skeleton className="h-[520px]" />
+        </div>
+        <Skeleton className="h-16" />
+      </div>
+    )
   }
 
   return (

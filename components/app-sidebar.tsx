@@ -11,16 +11,18 @@ import {
   Settings,
   X,
   Sparkles,
+  Lock,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { useBillingStatus, useCreateCheckoutSession } from "@/hooks/useBilling"
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Deals", href: "/deals", icon: Handshake },
   { name: "Payments", href: "/payments", icon: CreditCard },
   { name: "Calendar", href: "/calendar", icon: Calendar },
-  { name: "Analytics", href: "/analytics", icon: BarChart3 },
+  { name: "Analytics", href: "/analytics", icon: BarChart3, requiresPro: true },
   { name: "Settings", href: "/settings", icon: Settings },
 ]
 
@@ -31,6 +33,10 @@ interface AppSidebarProps {
 
 export function AppSidebar({ isOpen, onClose }: AppSidebarProps) {
   const pathname = usePathname()
+  const { data: billing, isLoading: isBillingLoading } = useBillingStatus()
+  const checkout = useCreateCheckoutSession()
+  const isPro = billing?.pricingPlan === "pro"
+  const shouldLock = !isBillingLoading && !isPro
 
   return (
     <>
@@ -73,6 +79,29 @@ export function AppSidebar({ isOpen, onClose }: AppSidebarProps) {
             <div className="space-y-0.5">
               {navigation.map((item) => {
                 const isActive = pathname === item.href || pathname?.startsWith(`${item.href}/`)
+                const isLocked = !!item.requiresPro && shouldLock
+
+                if (isLocked) {
+                  return (
+                    <button
+                      key={item.name}
+                      type="button"
+                      onClick={() => {
+                        onClose()
+                        checkout.mutate()
+                      }}
+                      className={cn(
+                        "flex items-center gap-3 px-3 py-2 rounded-md text-[13px] font-medium transition-all duration-150 text-sidebar-foreground/55 hover:bg-sidebar-accent/50",
+                        "cursor-pointer"
+                      )}
+                    >
+                      <item.icon className="h-[18px] w-[18px]" />
+                      <span className="flex-1">{item.name}</span>
+                      <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                    </button>
+                  )
+                }
+
                 return (
                   <Link
                     key={item.name}
@@ -94,20 +123,25 @@ export function AppSidebar({ isOpen, onClose }: AppSidebarProps) {
           </nav>
 
           {/* Upgrade prompt */}
-          <div className="p-3 mx-3 mb-4 rounded-lg bg-gradient-to-br from-primary/[0.08] to-primary/[0.03] border border-primary/10">
-            <div className="flex items-center gap-2 mb-1">
-              <Sparkles className="w-3.5 h-3.5 text-primary" />
-              <p className="text-[13px] font-semibold text-foreground">Upgrade to Pro</p>
-            </div>
-            <p className="text-[12px] text-muted-foreground leading-relaxed">
-              Unlock unlimited deals and advanced analytics
-            </p>
-            <Link href="/pricing">
-              <Button size="sm" className="w-full mt-3 h-8 text-[12px] font-medium shadow-sm shadow-primary/20 hover:shadow-md hover:shadow-primary/25 transition-shadow">
-                Upgrade Now
+          {!isBillingLoading && billing?.pricingPlan !== "pro" && (
+            <div className="p-3 mx-3 mb-4 rounded-lg bg-gradient-to-br from-primary/[0.08] to-primary/[0.03] border border-primary/10">
+              <div className="flex items-center gap-2 mb-1">
+                <Sparkles className="w-3.5 h-3.5 text-primary" />
+                <p className="text-[13px] font-semibold text-foreground">Upgrade to Pro</p>
+              </div>
+              <p className="text-[12px] text-muted-foreground leading-relaxed">
+                Unlock unlimited deals and advanced analytics
+              </p>
+              <Button
+                size="sm"
+                className="w-full mt-3 h-8 text-[12px] font-medium shadow-sm shadow-primary/20 hover:shadow-md hover:shadow-primary/25 transition-shadow"
+                onClick={() => checkout.mutate()}
+                disabled={checkout.isPending}
+              >
+                {checkout.isPending ? "Redirecting..." : "Upgrade Now"}
               </Button>
-            </Link>
-          </div>
+            </div>
+          )}
         </div>
       </aside>
     </>

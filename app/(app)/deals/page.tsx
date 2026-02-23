@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -33,100 +34,61 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
-
-const deals = [
-  {
-    id: 1,
-    brand: "Nike",
-    brandHandle: "@nike",
-    platform: "instagram",
-    deliverables: ["Reel", "Story"],
-    dueDate: "2026-02-06",
-    daysLeft: 2,
-    amount: 2500,
-    paymentStatus: "pending",
-    status: "active",
-  },
-  {
-    id: 2,
-    brand: "Spotify",
-    brandHandle: "@spotify",
-    platform: "youtube",
-    deliverables: ["Video"],
-    dueDate: "2026-02-08",
-    daysLeft: 4,
-    amount: 4000,
-    paymentStatus: "partially_paid",
-    status: "active",
-  },
-  {
-    id: 3,
-    brand: "Adidas",
-    brandHandle: "@adidas",
-    platform: "instagram",
-    deliverables: ["Story", "Post"],
-    dueDate: "2026-02-10",
-    daysLeft: 6,
-    amount: 1800,
-    paymentStatus: "pending",
-    status: "active",
-  },
-  {
-    id: 4,
-    brand: "Adobe",
-    brandHandle: "@adobe",
-    platform: "instagram",
-    deliverables: ["Reel", "Post", "Story"],
-    dueDate: "2026-02-12",
-    daysLeft: 8,
-    amount: 3200,
-    paymentStatus: "paid",
-    status: "completed",
-  },
-  {
-    id: 5,
-    brand: "Samsung",
-    brandHandle: "@samsung",
-    platform: "youtube",
-    deliverables: ["Video", "Short"],
-    dueDate: "2026-02-15",
-    daysLeft: 11,
-    amount: 5500,
-    paymentStatus: "pending",
-    status: "active",
-  },
-  {
-    id: 6,
-    brand: "Apple",
-    brandHandle: "@apple",
-    platform: "instagram",
-    deliverables: ["Reel"],
-    dueDate: "2026-02-18",
-    daysLeft: 14,
-    amount: 6000,
-    paymentStatus: "paid",
-    status: "completed",
-  },
-]
+import { useDeals, useDeleteDeal, type Deal } from "@/hooks/useDeals"
+import { useBillingStatus } from "@/hooks/useBilling"
+import { usePlatforms } from "@/hooks/usePlatforms"
+import { toast } from "sonner"
+import { EditDealModal } from "@/components/edit-deal-modal"
+import { useAuthStore } from "@/store/authStore"
+import { formatCurrency } from "@/lib/currency"
 
 export default function DealsPage() {
   const [showAddDeal, setShowAddDeal] = useState(false)
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [searchQuery, setSearchQuery] = useState("")
   const [platformFilter, setPlatformFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
-
-  const filteredDeals = deals.filter((deal) => {
-    const matchesSearch =
-      deal.brand.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      deal.brandHandle.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesPlatform =
-      platformFilter === "all" || deal.platform === platformFilter
-    const matchesStatus =
-      statusFilter === "all" || deal.paymentStatus === statusFilter
-    return matchesSearch && matchesPlatform && matchesStatus
+  const [editDeal, setEditDeal] = useState<Deal | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Deal | null>(null)
+  const normalizedSearch = searchQuery.trim()
+  const { data: deals = [], isLoading, isFetching } = useDeals({
+    search: normalizedSearch || undefined,
+    platform: platformFilter,
+    paymentStatus: statusFilter
   })
+  const { data: allDeals = [] } = useDeals()
+  const deleteDeal = useDeleteDeal()
+  const { data: billing } = useBillingStatus()
+  const { data: platformsData } = usePlatforms()
+  const currency = useAuthStore((state) => state.user?.currency || "USD")
+  const isPro = billing?.pricingPlan === "pro"
+  const isFiltered = normalizedSearch.length > 0 || platformFilter !== "all" || statusFilter !== "all"
+  const totalDealCount = isFiltered ? allDeals.length : deals.length
+  const dealLimitReached = !isPro && totalDealCount >= 3
+  const showListSkeleton = isLoading || isFetching
+  const emptyMessage = isFiltered
+    ? "No deals match your filters."
+    : "No deals yet. Add your first deal to get started."
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return
+    await deleteDeal.mutateAsync(deleteTarget._id)
+    setDeleteTarget(null)
+  }
 
   const getPlatformIcon = (platform: string) => {
     switch (platform) {
@@ -138,6 +100,15 @@ export default function DealsPage() {
         return <Instagram className="w-4 h-4" />
     }
   }
+
+  const platformOptions = platformsData?.all?.length
+    ? platformsData.all
+    : [
+        { id: "instagram", label: "Instagram" },
+        { id: "youtube", label: "YouTube" },
+        { id: "tiktok", label: "TikTok" },
+        { id: "other", label: "Other" }
+      ]
 
   const getPaymentBadge = (status: string) => {
     switch (status) {
@@ -179,6 +150,36 @@ export default function DealsPage() {
     return <span className="text-[12px] text-muted-foreground">{daysLeft}d left</span>
   }
 
+  const handleAddDeal = () => {
+    if (dealLimitReached) {
+      toast.error("Free plan includes up to 3 deals. Upgrade to add more.")
+      return
+    }
+    setShowAddDeal(true)
+  }
+
+  useEffect(() => {
+    const param = searchParams.get("search") || ""
+    if (param !== searchQuery) {
+      setSearchQuery(param)
+    }
+  }, [searchParams, searchQuery])
+
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value)
+
+    const normalized = value.trim()
+    const params = new URLSearchParams(searchParams.toString())
+    if (normalized) {
+      params.set("search", normalized)
+    } else {
+      params.delete("search")
+    }
+
+    const query = params.toString()
+    router.replace(query ? `/deals?${query}` : "/deals", { scroll: false })
+  }
+
   return (
     <div className="p-4 lg:p-6 space-y-5">
       {/* Header */}
@@ -187,7 +188,7 @@ export default function DealsPage() {
           <h1 className="text-xl font-bold text-foreground tracking-tight">Deals</h1>
           <p className="text-[13px] text-muted-foreground">Manage all your brand collaborations</p>
         </div>
-        <Button onClick={() => setShowAddDeal(true)} className="shadow-sm shadow-primary/20 hover:shadow-md hover:shadow-primary/25 transition-shadow">
+        <Button onClick={handleAddDeal} className="shadow-sm shadow-primary/20 hover:shadow-md hover:shadow-primary/25 transition-shadow">
           <Plus className="w-4 h-4 mr-2" />
           Add Deal
         </Button>
@@ -200,7 +201,7 @@ export default function DealsPage() {
           <Input
             placeholder="Search deals..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-9 h-9 text-[13px] border-border/60 focus-visible:border-primary/50"
           />
         </div>
@@ -210,8 +211,11 @@ export default function DealsPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all" className="text-[13px]">All Platforms</SelectItem>
-            <SelectItem value="instagram" className="text-[13px]">Instagram</SelectItem>
-            <SelectItem value="youtube" className="text-[13px]">YouTube</SelectItem>
+            {platformOptions.map((option) => (
+              <SelectItem key={option.id} value={option.id} className="text-[13px]">
+                {option.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -256,19 +260,31 @@ export default function DealsPage() {
       {/* Deals Grid/List */}
       {viewMode === "grid" ? (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredDeals.map((deal) => (
+          {showListSkeleton
+            ? Array.from({ length: 6 }).map((_, idx) => (
+                <Skeleton key={`deal-skeleton-${idx}`} className="h-44" />
+              ))
+            : deals.length === 0
+              ? (
+                <Card className="border-border/60 shadow-sm sm:col-span-2 lg:col-span-3">
+                  <CardContent className="py-12 text-center text-[13px] text-muted-foreground">
+                    {emptyMessage}
+                  </CardContent>
+                </Card>
+              )
+              : deals.map((deal) => (
             <Card
-              key={deal.id}
+              key={deal._id}
               className="border-border/60 shadow-sm hover:shadow-md hover:border-primary/20 transition-all duration-200 group"
             >
-              <CardContent className="p-4">
+              <CardContent className="relative p-4">
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary/15 to-primary/5 flex items-center justify-center text-primary font-bold text-[15px] border border-primary/10">
-                      {deal.brand.charAt(0)}
+                      {deal.brandName.charAt(0)}
                     </div>
                     <div>
-                      <p className="text-[14px] font-semibold text-foreground group-hover:text-primary transition-colors">{deal.brand}</p>
+                      <p className="text-[14px] font-semibold text-foreground group-hover:text-primary transition-colors">{deal.brandName}</p>
                       <p className="text-[12px] text-muted-foreground">
                         {deal.brandHandle}
                       </p>
@@ -276,20 +292,30 @@ export default function DealsPage() {
                   </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity relative z-10">
                         <MoreVertical className="w-4 h-4" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-36">
                       <DropdownMenuItem asChild className="text-[13px]">
-                        <Link href={`/deals/${deal.id}`}>
+                        <Link href={`/deals/${deal._id}`}>
                           <Eye className="w-3.5 h-3.5 mr-2" />
                           View
                         </Link>
                       </DropdownMenuItem>
-                      <DropdownMenuItem className="text-[13px]">
+                      <DropdownMenuItem
+                        className="text-[13px]"
+                        onSelect={() => setEditDeal(deal)}
+                      >
                         <Pencil className="w-3.5 h-3.5 mr-2" />
                         Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="text-[13px] text-destructive focus:text-destructive"
+                        onSelect={() => setDeleteTarget(deal)}
+                      >
+                        <AlertCircle className="w-3.5 h-3.5 mr-2" />
+                        Delete
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -301,8 +327,8 @@ export default function DealsPage() {
                   </div>
                   <div className="flex flex-wrap gap-1">
                     {deal.deliverables.map((d) => (
-                      <Badge key={d} variant="secondary" className="text-[10px] font-medium bg-muted/60 text-muted-foreground px-1.5 py-0">
-                        {d}
+                      <Badge key={`${deal._id}-${d.type}`} variant="secondary" className="text-[10px] font-medium bg-muted/60 text-muted-foreground px-1.5 py-0">
+                        {d.type}
                       </Badge>
                     ))}
                   </div>
@@ -311,17 +337,17 @@ export default function DealsPage() {
                 <div className="flex items-center justify-between pt-3 border-t border-border/60">
                   <div className="space-y-0.5">
                     <p className="text-[16px] font-bold text-foreground tracking-tight">
-                      ${deal.amount.toLocaleString()}
+                      {formatCurrency(deal.amount, currency)}
                     </p>
                     {getPaymentBadge(deal.paymentStatus)}
                   </div>
-                  {getUrgencyIndicator(deal.daysLeft)}
+                  {getUrgencyIndicator(deal.daysLeft || 0)}
                 </div>
 
                 <Link 
-                  href={`/deals/${deal.id}`}
-                  className="absolute inset-0 rounded-xl"
-                  aria-label={`View ${deal.brand} deal`}
+                  href={`/deals/${deal._id}`}
+                  className="absolute inset-0 rounded-xl z-0"
+                  aria-label={`View ${deal.brandName} deal`}
                 />
               </CardContent>
             </Card>
@@ -329,33 +355,45 @@ export default function DealsPage() {
         </div>
       ) : (
         <div className="space-y-2">
-          {filteredDeals.map((deal) => (
-            <Card key={deal.id} className="border-border/60 shadow-sm hover:shadow-md hover:border-primary/20 transition-all duration-200 group">
+          {showListSkeleton
+            ? Array.from({ length: 6 }).map((_, idx) => (
+                <Skeleton key={`deal-row-skeleton-${idx}`} className="h-20" />
+              ))
+            : deals.length === 0
+              ? (
+                <Card className="border-border/60 shadow-sm">
+                  <CardContent className="py-12 text-center text-[13px] text-muted-foreground">
+                    {emptyMessage}
+                  </CardContent>
+                </Card>
+              )
+              : deals.map((deal) => (
+            <Card key={deal._id} className="border-border/60 shadow-sm hover:shadow-md hover:border-primary/20 transition-all duration-200 group">
               <CardContent className="flex items-center justify-between p-4">
                 <div className="flex items-center gap-4">
                   <div className="w-9 h-9 rounded-md bg-gradient-to-br from-primary/15 to-primary/5 flex items-center justify-center text-primary font-bold text-[13px] border border-primary/10">
-                    {deal.brand.charAt(0)}
+                    {deal.brandName.charAt(0)}
                   </div>
                   <div>
-                    <p className="text-[13px] font-medium text-foreground group-hover:text-primary transition-colors">{deal.brand}</p>
+                    <p className="text-[13px] font-medium text-foreground group-hover:text-primary transition-colors">{deal.brandName}</p>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="text-muted-foreground">{getPlatformIcon(deal.platform)}</span>
                       <span className="text-[12px] text-muted-foreground">
-                        {deal.deliverables.join(", ")}
+                        {deal.deliverables.map((d) => d.type).join(", ")}
                       </span>
                     </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-6">
                   <div className="text-right hidden sm:block">
-                    <p className="text-[14px] font-semibold">${deal.amount.toLocaleString()}</p>
+                    <p className="text-[14px] font-semibold">{formatCurrency(deal.amount, currency)}</p>
                     {getPaymentBadge(deal.paymentStatus)}
                   </div>
                   <div className="hidden md:block w-20 text-right">
-                    {getUrgencyIndicator(deal.daysLeft)}
+                    {getUrgencyIndicator(deal.daysLeft || 0)}
                   </div>
                   <Link 
-                    href={`/deals/${deal.id}`}
+                    href={`/deals/${deal._id}`}
                     className="w-7 h-7 rounded-md bg-muted/50 flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
                   >
                     <ArrowUpRight className="w-4 h-4" />
@@ -368,6 +406,38 @@ export default function DealsPage() {
       )}
 
       <AddDealModal open={showAddDeal} onOpenChange={setShowAddDeal} />
+      <EditDealModal
+        open={!!editDeal}
+        onOpenChange={(open) => {
+          if (!open) setEditDeal(null)
+        }}
+        deal={editDeal}
+      />
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete deal?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove the deal and its payments. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteDeal.isPending}
+            >
+              {deleteDeal.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

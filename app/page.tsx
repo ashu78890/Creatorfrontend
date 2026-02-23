@@ -28,10 +28,10 @@ export default function LandingPage() {
           <Link href="/pricing">
             <Button variant="ghost" size="sm" className="h-8 text-[13px] text-muted-foreground hover:text-foreground">Pricing</Button>
           </Link>
-          <Link href="/dashboard">
+          <Link href="/auth/login">
             <Button variant="ghost" size="sm" className="h-8 text-[13px] text-muted-foreground hover:text-foreground">Sign In</Button>
           </Link>
-          <Link href="/onboarding">
+          <Link href="/auth/register">
             <Button size="sm" className="h-8 text-[13px] shadow-sm shadow-primary/20 hover:shadow-md hover:shadow-primary/25 transition-shadow">Get Started</Button>
           </Link>
         </div>
@@ -52,13 +52,13 @@ export default function LandingPage() {
             deadlines, and payments all in one beautiful dashboard.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Link href="/onboarding">
+            <Link href="/auth/register">
               <Button size="lg" className="h-11 text-[14px] px-6 shadow-sm shadow-primary/20 hover:shadow-md hover:shadow-primary/25 transition-shadow">
                 Start for Free
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
             </Link>
-            <Link href="/dashboard">
+            <Link href="/auth/login">
               <Button size="lg" variant="outline" className="h-11 text-[14px] px-6 bg-transparent border-border/60 hover:border-border hover:bg-muted/50">
                 View Demo
               </Button>
@@ -196,7 +196,7 @@ export default function LandingPage() {
           <p className="text-[14px] opacity-90 mb-7 max-w-md mx-auto leading-relaxed">
             Join thousands of creators who use CreatorFlow to stay organized and get paid on time.
           </p>
-          <Link href="/onboarding">
+          <Link href="/auth/register">
             <Button size="lg" variant="secondary" className="h-11 text-[14px] px-6 shadow-sm hover:shadow-md transition-shadow">
               Get Started Free
               <ArrowRight className="w-4 h-4 ml-2" />

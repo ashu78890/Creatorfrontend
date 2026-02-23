@@ -1,11 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import { ArrowRight, ArrowLeft, Check, Sparkles } from "lucide-react"
+import { useAuthStore } from "@/store/authStore"
+import { useUpdateSettings } from "@/hooks/useSettings"
 
 const platforms = [
   { id: "instagram", name: "Instagram", icon: "IG" },
@@ -31,10 +33,18 @@ const dealVolumes = [
 
 export default function OnboardingPage() {
   const router = useRouter()
+  const token = useAuthStore((state) => state.token)
+  const { mutateAsync, isPending } = useUpdateSettings()
   const [step, setStep] = useState(0)
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([])
   const [selectedDealTypes, setSelectedDealTypes] = useState<string[]>([])
   const [selectedVolume, setSelectedVolume] = useState<string>("")
+
+  useEffect(() => {
+    if (!token) {
+      router.replace("/auth/login")
+    }
+  }, [token, router])
 
   const togglePlatform = (id: string) => {
     setSelectedPlatforms((prev) =>
@@ -56,10 +66,15 @@ export default function OnboardingPage() {
     return false
   }
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (step < 3) {
       setStep(step + 1)
     } else {
+      await mutateAsync({
+        platforms: selectedPlatforms,
+        dealTypes: selectedDealTypes,
+        monthlyVolume: selectedVolume
+      })
       router.push("/dashboard")
     }
   }
@@ -261,7 +276,7 @@ export default function OnboardingPage() {
           ) : (
             <div />
           )}
-          <Button onClick={handleNext} disabled={!canContinue()} className="h-9 text-[13px] shadow-sm shadow-primary/20">
+          <Button onClick={handleNext} disabled={!canContinue() || isPending} className="h-9 text-[13px] shadow-sm shadow-primary/20">
             {step === 0 ? "Get Started" : step === 3 ? "Complete Setup" : "Continue"}
             <ArrowRight className="w-4 h-4 ml-2" />
           </Button>

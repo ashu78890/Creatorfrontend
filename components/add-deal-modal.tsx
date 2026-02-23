@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import {
   Dialog,
   DialogContent,
@@ -21,6 +21,10 @@ import {
 import { Card, CardContent } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import { ArrowRight, ArrowLeft, Check, Instagram, Youtube, Sparkles } from "lucide-react"
+import { useCreateDeal, useDeals } from "@/hooks/useDeals"
+import { useBillingStatus } from "@/hooks/useBilling"
+import { useAddCustomPlatform, usePlatforms, type PlatformItem } from "@/hooks/usePlatforms"
+import { toast } from "sonner"
 
 interface AddDealModalProps {
   open: boolean
@@ -41,6 +45,21 @@ const paymentStatuses = [
   { id: "paid", name: "Paid" },
 ]
 
+const systemPlatformFallback = [
+  { id: "instagram", label: "Instagram" },
+  { id: "youtube", label: "YouTube" },
+  { id: "tiktok", label: "TikTok" },
+  { id: "other", label: "Other" }
+]
+
+const customPlatformValue = "__custom__"
+
+const genericDeliverables = [
+  { id: "post", name: "Post" },
+  { id: "story", name: "Story" },
+  { id: "video", name: "Video" }
+]
+
 const steps = [
   { number: 1, label: "Brand" },
   { number: 2, label: "Details" },
@@ -52,11 +71,29 @@ export function AddDealModal({ open, onOpenChange }: AddDealModalProps) {
   const [brandHandle, setBrandHandle] = useState("")
   const [dealName, setDealName] = useState("")
   const [platform, setPlatform] = useState("")
+  const [customPlatformName, setCustomPlatformName] = useState("")
   const [selectedDeliverables, setSelectedDeliverables] = useState<string[]>([])
   const [dueDate, setDueDate] = useState("")
   const [paymentAmount, setPaymentAmount] = useState("")
   const [paymentStatus, setPaymentStatus] = useState("pending")
   const [notes, setNotes] = useState("")
+  const createDeal = useCreateDeal()
+  const { data: billing } = useBillingStatus()
+  const { data: allDeals = [] } = useDeals()
+  const { data: platformsData } = usePlatforms()
+  const addPlatform = useAddCustomPlatform()
+  const isPro = billing?.pricingPlan === "pro"
+  const dealLimitReached = !isPro && allDeals.length >= 3
+  const isCustomSelected = platform === customPlatformValue
+
+  const platformOptions = useMemo<PlatformItem[]>(() => {
+    const base: PlatformItem[] = platformsData?.all?.length ? platformsData.all : systemPlatformFallback
+    const hasCurrent = platform && !base.some((option) => option.id === platform)
+    if (hasCurrent && platform !== customPlatformValue) {
+      return [...base, { id: platform, label: platform }]
+    }
+    return base
+  }, [platform, platformsData])
 
   const toggleDeliverable = (id: string) => {
     setSelectedDeliverables((prev) =>
@@ -72,16 +109,31 @@ export function AddDealModal({ open, onOpenChange }: AddDealModalProps) {
     if (step > 1) setStep(step - 1)
   }
 
-  const handleSave = () => {
-    console.log({
+  const handleSave = async () => {
+    if (dealLimitReached) {
+      toast.error("Free plan includes up to 3 deals. Upgrade to add more.")
+      return
+    }
+    if (isCustomSelected) {
+      toast.error("Please add your custom platform first.")
+      return
+    }
+    const brandName = brandHandle.replace("@", "")
+    await createDeal.mutateAsync({
+      brandName: brandName.charAt(0).toUpperCase() + brandName.slice(1),
       brandHandle,
       dealName,
       platform,
-      selectedDeliverables,
+      amount: Number(paymentAmount),
+      paymentStatus: paymentStatus as "pending" | "partially_paid" | "paid",
       dueDate,
-      paymentAmount,
-      paymentStatus,
       notes,
+      deliverables: selectedDeliverables.map((type) => ({
+        type: type.charAt(0).toUpperCase() + type.slice(1),
+        status: "pending",
+        dueDate,
+        platform
+      }))
     })
     onOpenChange(false)
     resetForm()
@@ -92,6 +144,7 @@ export function AddDealModal({ open, onOpenChange }: AddDealModalProps) {
     setBrandHandle("")
     setDealName("")
     setPlatform("")
+    setCustomPlatformName("")
     setSelectedDeliverables([])
     setDueDate("")
     setPaymentAmount("")
@@ -101,16 +154,31 @@ export function AddDealModal({ open, onOpenChange }: AddDealModalProps) {
 
   const canContinue = () => {
     if (step === 1) return brandHandle.length > 0
-    if (step === 2) return dealName.length > 0 && platform.length > 0 && selectedDeliverables.length > 0
+    if (step === 2) {
+      return (
+        dealName.length > 0 &&
+        platform.length > 0 &&
+        platform !== customPlatformValue &&
+        selectedDeliverables.length > 0
+      )
+    }
     if (step === 3) return dueDate.length > 0 && paymentAmount.length > 0
     return false
   }
 
-  const filteredDeliverables = platform
-    ? deliverableTypes.filter(
-        (d) => d.platform === platform || d.platform === "all"
-      )
-    : deliverableTypes
+  const filteredDeliverables = platform && ["instagram", "youtube"].includes(platform)
+    ? deliverableTypes.filter((d) => d.platform === platform)
+    : platform
+      ? genericDeliverables
+      : deliverableTypes
+
+  const handleAddCustomPlatform = async () => {
+    const trimmed = customPlatformName.trim()
+    if (!trimmed) return
+    const result = await addPlatform.mutateAsync(trimmed)
+    setPlatform(result.platform.id)
+    setCustomPlatformName("")
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -209,10 +277,35 @@ export function AddDealModal({ open, onOpenChange }: AddDealModalProps) {
                     <SelectValue placeholder="Select platform" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="instagram" className="text-[13px]">Instagram</SelectItem>
-                    <SelectItem value="youtube" className="text-[13px]">YouTube</SelectItem>
+                    {platformOptions.map((option) => (
+                      <SelectItem key={option.id} value={option.id} className="text-[13px]">
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value={customPlatformValue} className="text-[13px]">
+                      Add custom platform...
+                    </SelectItem>
                   </SelectContent>
                 </Select>
+                {isCustomSelected && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <Input
+                      value={customPlatformName}
+                      onChange={(e) => setCustomPlatformName(e.target.value)}
+                      placeholder="e.g., Threads"
+                      className="h-9 text-[13px] border-border/60"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleAddCustomPlatform}
+                      disabled={addPlatform.isPending || !customPlatformName.trim()}
+                      className="h-9 text-[13px]"
+                    >
+                      {addPlatform.isPending ? "Adding..." : "Add"}
+                    </Button>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -314,7 +407,11 @@ export function AddDealModal({ open, onOpenChange }: AddDealModalProps) {
               <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
           ) : (
-            <Button onClick={handleSave} disabled={!canContinue()} className="h-9 text-[13px] shadow-sm shadow-primary/20">
+            <Button
+              onClick={handleSave}
+              disabled={!canContinue() || createDeal.isPending || dealLimitReached}
+              className="h-9 text-[13px] shadow-sm shadow-primary/20"
+            >
               <Check className="w-4 h-4 mr-2" />
               Save Deal
             </Button>
