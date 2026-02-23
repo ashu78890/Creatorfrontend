@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { api } from "@/lib/api"
@@ -54,47 +55,59 @@ export function useDeals(params?: {
   paymentStatus?: string
   status?: string
 }) {
-  return useQuery({
+  const query = useQuery<Deal[], Error>({
     queryKey: ["deals", params],
     queryFn: async () => {
       const { data } = await api.get<DealsResponse>("/api/deals", { params })
       return data.data
-    },
-    onError: (error: any) => {
-      const message = error?.response?.data?.message || "Failed to load deals"
-      toast.error(message)
     }
   })
+
+  useEffect(() => {
+    if (!query.error) return
+    const message = (query.error as any)?.response?.data?.message || "Failed to load deals"
+    toast.error(message)
+  }, [query.error])
+
+  return query
 }
 
 export function useDeal(id?: string) {
-  return useQuery({
+  const query = useQuery<DealResponse["data"], Error>({
     queryKey: ["deal", id],
     enabled: !!id,
     queryFn: async () => {
       const { data } = await api.get<DealResponse>(`/api/deals/${id}`)
       return data.data
-    },
-    onError: (error: any) => {
-      const message = error?.response?.data?.message || "Failed to load deal"
-      toast.error(message)
     }
   })
+
+  useEffect(() => {
+    if (!query.error) return
+    const message = (query.error as any)?.response?.data?.message || "Failed to load deal"
+    toast.error(message)
+  }, [query.error])
+
+  return query
 }
 
 export function useDealReminders(id?: string) {
-  return useQuery({
+  const query = useQuery<DealRemindersResponse["data"], Error>({
     queryKey: ["deal-reminders", id],
     enabled: !!id,
     queryFn: async () => {
       const { data } = await api.get<DealRemindersResponse>(`/api/deals/${id}/reminders`)
       return data.data
-    },
-    onError: (error: any) => {
-      const message = error?.response?.data?.message || "Failed to load reminders"
-      toast.error(message)
     }
   })
+
+  useEffect(() => {
+    if (!query.error) return
+    const message = (query.error as any)?.response?.data?.message || "Failed to load reminders"
+    toast.error(message)
+  }, [query.error])
+
+  return query
 }
 
 export function useCreateDeal() {

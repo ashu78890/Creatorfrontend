@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { api } from "@/lib/api"
@@ -39,16 +40,22 @@ interface DashboardResponse {
   }
 }
 
+export type DashboardData = DashboardResponse["data"]
+
 export function useDashboard() {
-  return useQuery({
+  const query = useQuery<DashboardData, Error>({
     queryKey: ["dashboard"],
     queryFn: async () => {
       const { data } = await api.get<DashboardResponse>("/api/dashboard")
       return data.data
-    },
-    onError: (error: any) => {
-      const message = error?.response?.data?.message || "Failed to load dashboard"
-      toast.error(message)
     }
   })
+
+  useEffect(() => {
+    if (!query.error) return
+    const message = (query.error as any)?.response?.data?.message || "Failed to load dashboard"
+    toast.error(message)
+  }, [query.error])
+
+  return query
 }

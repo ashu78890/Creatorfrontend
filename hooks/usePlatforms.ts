@@ -18,18 +18,21 @@ interface PlatformsResponse {
 
 export type PlatformsData = PlatformsResponse["data"]
 
-export function usePlatforms(): UseQueryResult<PlatformsData, unknown> {
-  return useQuery<PlatformsData>({
+export function usePlatforms(): UseQueryResult<PlatformsData, Error> {
+  const query = useQuery({
     queryKey: ["platforms"],
     queryFn: async () => {
       const { data } = await api.get<PlatformsResponse>("/api/platforms")
       return data.data
-    },
-    onError: (error: any) => {
-      const message = error?.response?.data?.message || "Failed to load platforms"
-      toast.error(message)
     }
   })
+
+  if (query.isError && query.error) {
+    const message = (query.error as any)?.response?.data?.message || "Failed to load platforms"
+    toast.error(message)
+  }
+
+  return query
 }
 
 export function useAddCustomPlatform() {
